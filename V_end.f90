@@ -174,7 +174,32 @@ contains
 
       write(*,*) 'Ya leyó las posiciones finales'
 
+      call update_ceros(r,metal,mask,nceros,ceros)
       
+   endsubroutine dendritas
+ 
+   subroutine update_ceros(r,metal,mask,nceros,ceros)
+      implicit none
+      real(np),dimension(:,:),intent(in)     :: r       ! Posiciones
+      logical,dimension(:),intent(in)        :: metal
+      integer,allocatable,intent(in)         :: ceros(:,:)
+      logical,intent(in)                      :: mask(:,:,:)
+      real(np),dimension(:),allocatable       ::m   !Voltaje asociado a cada particula,masa
+      character,dimension(:),allocatable      ::sym         !indica si la particula es litio libre o congelado
+      real(np)                               :: ip(3),ia,ia2,d2
+      real(np),parameter                     :: a=3.2_np
+      integer                                 ::ri,rj,rk
+      integer                                :: n,pnum,iia
+      integer                                :: count_CG,count_Li,nceros
+      integer                                :: i,j,k
+      integer ,intent(in)                    :: nvx,nvy,nvz
+
+      ! Valores inicales
+      ! nvx=size(mask,1)
+      nceros=0
+
+      allocate(ceros(8*pnum,3))
+
       !Condicion de metal - Se asigna voltaje nulo a la posciones de la malla donde haya estructura de dendritas
       !!$OMP PARALLEL DO PRIVATE(N,RI,RJ,RK)
       pnum = size(r,1)
@@ -206,14 +231,23 @@ contains
                   d2=(ip(1)-i)**2+(ip(2)-j)**2+(ip(3)-k)**2
                   if(d2>ia2) cycle
 
+                  ! Do PBC
+                  if(i>=nvx) then
+                    i=i-nvx
+                  elseif(i<0) then
+                    i=i+nvx
+                  endif
+                  ! TODO: para j
+                  ! FIXME: Revizar que queden bien las filas 0 y nvx+1
+
                   nceros=nceros+1
                   ceros(nceros,1)=i
                   ceros(nceros,2)=j
                   ceros(nceros,3)=k
 
+                  ! TODO mask ceros
                   mask(i,j,k)=.true.
 
-                  V(i,j,k)=0._np
                 enddo
                enddo
             enddo
@@ -224,7 +258,7 @@ contains
       print *, "We have this polos", nceros
 
    endsubroutine dendritas
-
+    
    !---------------------------------------------------------
 
    subroutine step_pbc(V0,nvx,nvy,nvz,V,res,mres,mask)
@@ -247,15 +281,11 @@ contains
          do j=1,nvy
             do i=1,nvx
 
-               ! Skip calculo residuos y potencial en lugares que son cero
-               if(mask(i,j,k)) then
-                  V(i,j,k)=0._np
-                  cycle
-                endif
-                      
                 V(i,j,k)=(V0(i+1,j,k)+V0(i-1,j,k)+V0(i,j+1,k)+V0(i,j-1,k)+V0(i,j,k+1)+V0(i,j,k-1))/6._np
                 aux=(V0(i,j,k)-V(i,j,k))**2
                 mres=max(mres,aux)
+
+                ! TODO: res=res+aux*mask(i,j,k)
                 res=res+aux
                 !if(abs(V(i,j,k)-V0(i,j,k))>1.e-5_dp) print *, "WARNING"
             enddo
